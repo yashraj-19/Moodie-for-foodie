@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata = {
   title: "Culinary Canvas | Personalized Recipe Discovery",
   description: "Discover recipes tailored to your preferences and dietary needs",
-    generator: 'v0.dev'
+    generator: 'V'
 }
 
 export default function RootLayout({
