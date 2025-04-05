@@ -1,6 +1,7 @@
 // API key is available as an environment variable
-const API_KEY = process.env.SPOONACULAR_API_KEY
-const BASE_URL = "https://api.spoonacular.com"
+const API_KEY = "b7b9c976e5f242ef9ef7034fc758bfbd";
+const BASE_URL = "https://api.spoonacular.com";
+
 
 export type Recipe = {
   id: number
