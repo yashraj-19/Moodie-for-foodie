@@ -1,5 +1,5 @@
 // API key is available as an environment variable
-const API_KEY = "d5fa148aeabd443f913f88795af4fdae";
+const API_KEY = "e2f80c1e4d3a464c860940d05ff10757";
 const BASE_URL = "https://api.spoonacular.com";
 
 
