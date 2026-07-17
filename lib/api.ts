@@ -1,6 +1,14 @@
-// API key is available as an environment variable
-const API_KEY = "e2f80c1e4d3a464c860940d05ff10757";
+// Spoonacular key is read server-side from the environment. These modules are
+// only imported by Next.js route handlers (never shipped to the browser), so
+// the key is never exposed to the client. Set SPOONACULAR_API_KEY in .env.local.
+const API_KEY = process.env.SPOONACULAR_API_KEY ?? "";
 const BASE_URL = "https://api.spoonacular.com";
+
+if (!API_KEY && process.env.NODE_ENV !== "production") {
+  // Surface the misconfiguration early in development instead of failing with
+  // an opaque 401 from Spoonacular at request time.
+  console.warn("[api] SPOONACULAR_API_KEY is not set — recipe requests will fail. Add it to .env.local");
+}
 
 
 export type Recipe = {
