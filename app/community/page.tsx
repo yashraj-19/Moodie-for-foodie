@@ -1,4 +1,7 @@
+"use client"
+
 import Link from "next/link"
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -7,13 +10,91 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Heart, MessageSquare, Share2, Search, Filter, TrendingUp, Users, Clock } from "lucide-react"
 import DashboardHeader from "@/components/dashboard-header"
+import { MOCK_RECIPES } from "@/lib/mock-recipes"
+import { useAuth } from "@/context/auth-context"
+
+type LocalPost = {
+  id: number
+  username: string
+  content: string
+  image: string
+  likes: number
+  comments: number
+  recipeTag?: string
+}
 
 export default function Community() {
+  const communityRecipes = MOCK_RECIPES.slice(0, 6)
+  const { user } = useAuth()
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const [postText, setPostText] = useState("")
+  const [postPhoto, setPostPhoto] = useState("")
+  const [taggedRecipe, setTaggedRecipe] = useState("")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [following, setFollowing] = useState<number[]>([])
+  const [likedPosts, setLikedPosts] = useState<number[]>([])
+  const [localPosts, setLocalPosts] = useState<LocalPost[]>([])
+
+  useEffect(() => {
+    try {
+      setLocalPosts(JSON.parse(localStorage.getItem("moodie_community_posts") || "[]"))
+      setFollowing(JSON.parse(localStorage.getItem("moodie_community_following") || "[]"))
+    } catch (error) {
+      console.error("Unable to load community data", error)
+    }
+  }, [])
+
+  const visiblePosts = useMemo(() => {
+    const posts = [...localPosts, ...communityRecipes.slice(0, 4).map((recipe, index) => ({
+      id: index + 1,
+      username: `foodie${index + 1}`,
+      content: "Just made this amazing dish following a recipe I found on Moodie for Foodie! The flavors were incredible and it was so easy to make.",
+      image: recipe.image,
+      likes: 42 + (index + 1) * 10,
+      comments: 12 + index + 1,
+      recipeTag: recipe.title,
+    }))]
+    const normalizedQuery = searchQuery.trim().toLowerCase()
+    return normalizedQuery ? posts.filter((post) => `${post.username} ${post.content} ${post.recipeTag || ""}`.toLowerCase().includes(normalizedQuery)) : posts
+  }, [communityRecipes, localPosts, searchQuery])
+
+  const handlePhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => setPostPhoto(typeof reader.result === "string" ? reader.result : "")
+    reader.readAsDataURL(file)
+  }
+
+  const handlePost = () => {
+    if (!postText.trim() && !postPhoto) return
+    const newPost: LocalPost = {
+      id: Date.now(),
+      username: user?.name || "you",
+      content: postText.trim() || "Shared a new creation with the community.",
+      image: postPhoto || communityRecipes[0].image,
+      likes: 0,
+      comments: 0,
+      recipeTag: taggedRecipe || undefined,
+    }
+    const nextPosts = [newPost, ...localPosts]
+    setLocalPosts(nextPosts)
+    localStorage.setItem("moodie_community_posts", JSON.stringify(nextPosts))
+    setPostText("")
+    setPostPhoto("")
+    setTaggedRecipe("")
+  }
+
+  const toggleFollow = (id: number) => {
+    const next = following.includes(id) ? following.filter((value) => value !== id) : [...following, id]
+    setFollowing(next)
+    localStorage.setItem("moodie_community_following", JSON.stringify(next))
+  }
   return (
     <div className="min-h-screen bg-gray-50">
       <DashboardHeader />
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto max-w-6xl px-4 py-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800">Community</h1>
@@ -22,7 +103,7 @@ export default function Community() {
           <div className="flex space-x-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input placeholder="Search posts..." className="pl-10 w-full md:w-[250px]" />
+              <Input placeholder="Search posts..." className="pl-10 w-full md:w-[250px]" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
             </div>
             <Button variant="outline" size="icon">
               <Filter className="h-4 w-4" />
@@ -37,20 +118,20 @@ export default function Community() {
               <CardHeader className="pb-3">
                 <div className="flex justify-between items-center">
                   <CardTitle>Share Your Creation</CardTitle>
-                  <Button className="bg-amber-600 hover:bg-amber-700">Post</Button>
+                  <Button className="bg-amber-600 hover:bg-amber-700" onClick={handlePost} disabled={!postText.trim() && !postPhoto}>Post</Button>
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="flex space-x-4">
                   <Avatar className="h-10 w-10">
-                    <AvatarImage src="/placeholder.svg?height=50&width=50" />
                     <AvatarFallback>AL</AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
-                    <Input placeholder="What did you cook today?" className="mb-3" />
+                    <Input placeholder="What did you cook today?" className="mb-3" value={postText} onChange={(event) => setPostText(event.target.value)} />
                     <div className="flex justify-between items-center">
                       <div className="flex space-x-2">
-                        <Button variant="outline" size="sm" className="text-gray-600">
+                        <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+                        <Button variant="outline" size="sm" className="text-gray-600" onClick={() => photoInputRef.current?.click()}>
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
                             width="16"
@@ -67,26 +148,14 @@ export default function Community() {
                             <circle cx="8.5" cy="8.5" r="1.5" />
                             <polyline points="21 15 16 10 5 21" />
                           </svg>
-                          Add Photo
+                          {postPhoto ? "Photo Added" : "Add Photo"}
                         </Button>
-                        <Button variant="outline" size="sm" className="text-gray-600">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="mr-2"
-                          >
-                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                          </svg>
-                          Tag Recipe
-                        </Button>
+                        <select value={taggedRecipe} onChange={(event) => setTaggedRecipe(event.target.value)} className="h-9 rounded-md border border-input bg-background px-3 text-sm text-gray-600">
+                          <option value="">Tag Recipe</option>
+                          {communityRecipes.map((recipe) => <option key={recipe.id} value={recipe.title}>{recipe.title}</option>)}
+                        </select>
                       </div>
+                      {postPhoto && <img src={postPhoto} alt="Selected creation" className="h-14 w-14 rounded-md object-cover" />}
                     </div>
                   </div>
                 </div>
@@ -110,32 +179,34 @@ export default function Community() {
               </TabsList>
 
               <TabsContent value="trending" className="space-y-6">
-                {[1, 2, 3, 4].map((post) => (
+                {visiblePosts.map((post, index) => (
                   <CommunityPost
-                    key={post}
-                    id={post}
-                    username={`foodie${post}`}
-                    userImage={`/placeholder.svg?height=50&width=50`}
-                    timeAgo={`${post * 2} hours ago`}
-                    content={`Just made this amazing dish following a recipe I found on Culinary Canvas! The flavors are incredible and it was so easy to make. Definitely adding this to my regular rotation! #homecooking #delicious`}
-                    image={`/placeholder.svg?height=400&width=600`}
-                    likes={42 + post * 10}
-                    comments={12 + post}
-                    recipeTag={post % 2 === 0 ? "Homemade Pasta Carbonara" : undefined}
+                    key={post.id}
+                    id={post.id}
+                    username={post.username}
+                    userImage=""
+                    timeAgo={index === 0 && post.id > 1000000000000 ? "Just now" : `${(index + 1) * 2} hours ago`}
+                    content={post.content}
+                    image={post.image}
+                    likes={post.likes + (likedPosts.includes(post.id) ? 1 : 0)}
+                    comments={post.comments}
+                    recipeTag={post.recipeTag}
+                    isLiked={likedPosts.includes(post.id)}
+                    onLike={() => setLikedPosts((current) => current.includes(post.id) ? current.filter((id) => id !== post.id) : [...current, post.id])}
                   />
                 ))}
               </TabsContent>
 
               <TabsContent value="following" className="space-y-6">
-                {[1, 2].map((post) => (
+                {[1, 2].map((post, index) => (
                   <CommunityPost
                     key={post}
                     id={post + 10}
                     username={`chef${post}`}
-                    userImage={`/placeholder.svg?height=50&width=50`}
+                    userImage=""
                     timeAgo={`${post} day ago`}
                     content={`Sharing my latest creation! This seasonal dish uses fresh ingredients from my garden. Let me know if you'd like the recipe!`}
-                    image={`/placeholder.svg?height=400&width=600`}
+                    image={communityRecipes[index + 2].image}
                     likes={85 + post * 15}
                     comments={24 + post * 3}
                     recipeTag="Garden Fresh Salad"
@@ -144,15 +215,15 @@ export default function Community() {
               </TabsContent>
 
               <TabsContent value="recent" className="space-y-6">
-                {[1, 2, 3].map((post) => (
+                {[1, 2, 3].map((post, index) => (
                   <CommunityPost
                     key={post}
                     id={post + 20}
                     username={`newbie${post}`}
-                    userImage={`/placeholder.svg?height=50&width=50`}
+                    userImage=""
                     timeAgo={`${post * 10} minutes ago`}
                     content={`My first attempt at baking bread! Thanks to the detailed instructions and tips on this app, it turned out pretty good for a beginner!`}
-                    image={`/placeholder.svg?height=400&width=600`}
+                    image={communityRecipes[index + 3].image}
                     likes={5 + post}
                     comments={2}
                   />
@@ -192,20 +263,19 @@ export default function Community() {
                 <CardTitle>Top Contributors</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {[1, 2, 3, 4, 5].map((user) => (
-                  <div key={user} className="flex items-center justify-between">
+                {[1, 2, 3, 4, 5].map((contributor) => (
+                  <div key={contributor} className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={`/placeholder.svg?height=50&width=50`} />
-                        <AvatarFallback>U{user}</AvatarFallback>
+                        <AvatarFallback>U{contributor}</AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="font-medium text-sm">Chef User {user}</p>
-                        <p className="text-xs text-gray-500">{100 - user * 10} recipes shared</p>
+                        <p className="font-medium text-sm">Chef User {contributor}</p>
+                        <p className="text-xs text-gray-500">{100 - contributor * 10} recipes shared</p>
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" className="h-8 text-amber-600">
-                      Follow
+                    <Button variant="ghost" size="sm" className="h-8 text-amber-600" onClick={() => toggleFollow(contributor)}>
+                      {following.includes(contributor) ? "Following" : "Follow"}
                     </Button>
                   </div>
                 ))}
@@ -256,6 +326,8 @@ interface CommunityPostProps {
   likes: number
   comments: number
   recipeTag?: string
+  isLiked?: boolean
+  onLike?: () => void
 }
 
 function CommunityPost({
@@ -268,6 +340,8 @@ function CommunityPost({
   likes,
   comments,
   recipeTag,
+  isLiked = false,
+  onLike,
 }: CommunityPostProps) {
   return (
     <Card>
@@ -326,13 +400,13 @@ function CommunityPost({
           </Link>
         )}
         <div className="rounded-lg overflow-hidden">
-          <img src={image || "/placeholder.svg"} alt={`Post by ${username}`} className="w-full h-auto object-cover" />
+          <img src={image || "/placeholder.jpg"} alt={`Post by ${username}`} className="block aspect-[3/2] w-full object-cover" />
         </div>
       </CardContent>
       <CardFooter className="pt-0">
         <div className="flex justify-between w-full">
-          <Button variant="ghost" size="sm" className="text-gray-600">
-            <Heart className={`h-4 w-4 mr-1 ${id % 3 === 0 ? "fill-red-500 text-red-500" : ""}`} />
+          <Button variant="ghost" size="sm" className="text-gray-600" onClick={onLike}>
+            <Heart className={`h-4 w-4 mr-1 ${isLiked ? "fill-red-500 text-red-500" : ""}`} />
             {likes}
           </Button>
           <Button variant="ghost" size="sm" className="text-gray-600">

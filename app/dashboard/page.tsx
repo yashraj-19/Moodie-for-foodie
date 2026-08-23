@@ -16,19 +16,22 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Clock, ChefHat, Heart, Bookmark, Search, TrendingUp, Utensils, Sparkles, Calendar, BookOpen } from "lucide-react"
+import { Clock, ChefHat, Heart, Bookmark, Search, TrendingUp, Utensils, Sparkles, Calendar, BookOpen, Plus, Pencil, Trash2 } from "lucide-react"
 import DashboardHeader from "@/components/dashboard-header"
 import RecipeCard from "@/components/recipe-card"
 import MoodSelector from "@/components/mood-selector"
 import type { SearchResult } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
+import { hydrateRecipes } from "@/lib/recipe-client"
+import { calculateTasteDNA, rankRecipes } from "@/lib/recommendations"
 
 export default function Dashboard() {
-  const { user, isRecipeSaved, toggleSaveRecipe, isRecipeLiked, toggleLikeRecipe, updateProfile } = useAuth()
+  const { user, isRecipeSaved, toggleSaveRecipe, isRecipeLiked, toggleLikeRecipe, updateProfile, recordMood, createCollection, renameCollection, deleteCollection } = useAuth()
   const [forYouRecipes, setForYouRecipes] = useState<SearchResult[]>([])
   const [trendingRecipes, setTrendingRecipes] = useState<SearchResult[]>([])
   const [moodRecipes, setMoodRecipes] = useState<SearchResult[]>([])
+  const [hydratedSavedRecipes, setHydratedSavedRecipes] = useState<SearchResult[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isMoodLoading, setIsMoodLoading] = useState(false)
 
@@ -38,6 +41,7 @@ export default function Dashboard() {
   const [calendarModalOpen, setCalendarModalOpen] = useState(false)
   const [editName, setEditName] = useState(user?.name || "")
   const [editCuisine, setEditCuisine] = useState(user?.favoriteCuisines?.[0] || "Italian")
+  const [collectionName, setCollectionName] = useState("")
 
   useEffect(() => {
     if (user) {
@@ -50,12 +54,21 @@ export default function Dashboard() {
     const fetchInitialRecipes = async () => {
       setIsLoading(true)
       try {
-        const forYouResponse = await fetch("/api/recipes/search?sort=popularity&number=6")
-        const forYouData = await forYouResponse.json()
+        const params = new URLSearchParams({ sort: "popularity", number: "6" })
+        const selectedDiet = user?.dietaryRestrictions?.find((diet) => diet.toLowerCase() === "vegan") || user?.dietaryRestrictions?.find((diet) => diet.toLowerCase() === "vegetarian") || user?.dietaryRestrictions?.[0]
+        if (selectedDiet) params.set("diet", selectedDiet)
+        if (user?.favoriteCuisines?.length) params.set("cuisine", user.favoriteCuisines.join(","))
+        const timeMatch = user?.cookingTime?.match(/(\d+)\D+(\d+)/)
+        if (timeMatch) params.set("maxReadyTime", timeMatch[2])
+        const [forYouResponse, trendingResponse] = await Promise.all([
+          fetch(`/api/recipes/search?${params.toString()}`),
+          fetch("/api/recipes/random?number=6"),
+        ])
+        const [forYouData, trendingData] = await Promise.all([
+          forYouResponse.json(),
+          trendingResponse.json(),
+        ])
         setForYouRecipes(forYouData.results || [])
-
-        const trendingResponse = await fetch("/api/recipes/random?number=6")
-        const trendingData = await trendingResponse.json()
         setTrendingRecipes(trendingData || [])
       } catch (error) {
         console.error("Error fetching initial recipes:", error)
@@ -65,7 +78,15 @@ export default function Dashboard() {
     }
 
     fetchInitialRecipes()
-  }, [])
+  }, [user?.id])
+
+  useEffect(() => {
+    let cancelled = false
+    hydrateRecipes(user?.savedRecipeIds || []).then((recipes) => {
+      if (!cancelled) setHydratedSavedRecipes(recipes)
+    })
+    return () => { cancelled = true }
+  }, [user?.savedRecipeIds])
 
   const handleMoodSelect = (recipes: SearchResult[]) => {
     setMoodRecipes(recipes)
@@ -90,13 +111,12 @@ export default function Dashboard() {
 
   // Saved recipes list from both feeds
   const allLoadedRecipes = [...forYouRecipes, ...trendingRecipes, ...moodRecipes]
-  const savedRecipes = allLoadedRecipes.filter(
-    (recipe, index, self) =>
-      user?.savedRecipeIds?.includes(recipe.id) &&
-      index === self.findIndex((r) => r.id === recipe.id)
-  )
+  const savedRecipes = hydratedSavedRecipes.filter((recipe) => user?.savedRecipeIds?.includes(recipe.id))
 
   const displayRecipes = moodRecipes.length > 0 ? moodRecipes : forYouRecipes
+  const rankedRecipes = user ? rankRecipes(displayRecipes, user, moodRecipes.length > 0 ? (user.moodHistory || []).at(-1)?.mood : undefined) : displayRecipes
+  const tasteDNA = user ? calculateTasteDNA(user) : []
+  const lastMood = user?.moodHistory?.at(-1)?.mood
 
   const getInitials = (name: string) => {
     if (!name) return "AL"
@@ -133,7 +153,22 @@ export default function Dashboard() {
               </div>
 
               {/* Mood Selector Component */}
-              <MoodSelector onMoodSelect={handleMoodSelect} onLoading={handleMoodLoading} />
+              <MoodSelector onMoodSelect={handleMoodSelect} onLoading={handleMoodLoading} onMoodChosen={recordMood} diet={user?.dietaryRestrictions?.find((diet) => diet.toLowerCase() === "vegan") || user?.dietaryRestrictions?.find((diet) => diet.toLowerCase() === "vegetarian") || user?.dietaryRestrictions?.[0]} />
+
+              {lastMood && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                  <strong>Welcome back.</strong> Last time you were craving {lastMood}. Continue exploring.
+                </div>
+              )}
+
+              {tasteDNA.length > 0 && (
+                <Card className="border-amber-100 bg-white">
+                  <CardHeader className="pb-2"><CardTitle className="text-lg">Your Taste DNA</CardTitle><CardDescription>Based on your local activity</CardDescription></CardHeader>
+                  <CardContent className="space-y-2">
+                    {tasteDNA.map(({ mood, percentage }) => <div key={mood} className="flex items-center gap-3 text-sm"><span className="w-16 capitalize text-gray-600">{mood}</span><div className="h-2 flex-1 rounded-full bg-amber-100"><div className="h-2 rounded-full bg-amber-500" style={{ width: `${percentage}%` }} /></div><span className="w-10 text-right font-semibold text-amber-700">{percentage}%</span></div>)}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Recipe Tabs */}
               <Tabs defaultValue="for-you" className="w-full">
@@ -160,7 +195,7 @@ export default function Dashboard() {
                     </div>
                   ) : displayRecipes.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                      {displayRecipes.map((recipe) => (
+                      {rankedRecipes.map((recipe) => (
                         <RecipeCard key={recipe.id} recipe={recipe} />
                       ))}
                     </div>
@@ -349,6 +384,25 @@ export default function Dashboard() {
                   Edit Profile & Preferences
                 </Button>
               </CardFooter>
+            </Card>
+
+            <Card className="border-gray-200/80 shadow-xs">
+              <CardHeader className="pb-3"><CardTitle className="text-base">Recipe Collections</CardTitle><CardDescription>Organize your saved recipes</CardDescription></CardHeader>
+              <CardContent className="space-y-2">
+                {(user?.collections || []).map((collection) => (
+                  <div key={collection.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2 text-sm">
+                    <span>{collection.name} <span className="text-xs text-gray-400">({collection.recipeIds.length})</span></span>
+                    <span className="flex gap-1">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={`Rename ${collection.name}`} onClick={() => { const name = window.prompt("Rename collection", collection.name); if (name) renameCollection(collection.id, name) }}><Pencil className="h-3 w-3" /></Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-gray-400 hover:text-red-600" aria-label={`Delete ${collection.name}`} onClick={() => deleteCollection(collection.id)}><Trash2 className="h-3 w-3" /></Button>
+                    </span>
+                  </div>
+                ))}
+                <div className="flex gap-2 pt-2">
+                  <Input value={collectionName} onChange={(event) => setCollectionName(event.target.value)} placeholder="New collection" className="h-8 text-xs" />
+                  <Button size="sm" className="h-8 bg-amber-600 hover:bg-amber-700" aria-label="Create collection" onClick={() => { if (createCollection(collectionName)) setCollectionName("") }}><Plus className="h-4 w-4" /></Button>
+                </div>
+              </CardContent>
             </Card>
 
             {/* Quick Cooking Tips Card */}

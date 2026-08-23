@@ -1,16 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { searchRecipes } from "@/lib/api"
+import { parseSearchIntent } from "@/lib/search-intent"
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams
-  const query = searchParams.get("query") || ""
+  const rawQuery = searchParams.get("query") || ""
+  const intent = parseSearchIntent(rawQuery)
+  const query = intent.query
   const cuisine = searchParams.get("cuisine") || ""
   const diet = searchParams.get("diet") || ""
-  const type = searchParams.get("type") || ""
+  const type = searchParams.get("type") || intent.type || ""
   const intolerances = searchParams.get("intolerances") || ""
   const maxReadyTime = searchParams.get("maxReadyTime")
     ? Number.parseInt(searchParams.get("maxReadyTime") as string)
-    : undefined
+    : intent.maxReadyTime
   const sort = searchParams.get("sort") || "popularity"
   const sortDirection = searchParams.get("sortDirection") || "desc"
   const offset = searchParams.get("offset") ? Number.parseInt(searchParams.get("offset") as string) : 0

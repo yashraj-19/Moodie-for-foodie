@@ -5,10 +5,12 @@ import Link from "next/link"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Clock, ChefHat, Heart, Bookmark, Star } from "lucide-react"
+import { Clock, ChefHat, Heart, Bookmark, Star, MoreHorizontal } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import type { SearchResult } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
+import { getRecommendationReasons } from "@/lib/recommendations"
 
 interface RecipeCardProps {
   recipe: SearchResult
@@ -23,13 +25,14 @@ const FALLBACK_IMAGES = [
 ]
 
 export default function RecipeCard({ recipe, showActions = true }: RecipeCardProps) {
-  const { isRecipeSaved, toggleSaveRecipe, isRecipeLiked, toggleLikeRecipe, isAuthenticated } = useAuth()
+  const { user, isRecipeSaved, toggleSaveRecipe, isRecipeLiked, toggleLikeRecipe, toggleRecipeInCollection } = useAuth()
   const [imgSrc, setImgSrc] = useState(
     recipe.image || FALLBACK_IMAGES[Math.abs(recipe.id) % FALLBACK_IMAGES.length]
   )
 
   const isSaved = isRecipeSaved(recipe.id)
   const isLiked = isRecipeLiked(recipe.id)
+  const recommendationReasons = user ? getRecommendationReasons(recipe, user).slice(0, 2) : []
 
   const handleToggleSave = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -109,6 +112,12 @@ export default function RecipeCard({ recipe, showActions = true }: RecipeCardPro
             </div>
             <span className="text-gray-500 font-normal ml-1">4.8 ({24 + (recipe.id % 50)})</span>
           </div>
+          {recommendationReasons.length > 0 && (
+            <div className="mt-3 border-t border-amber-100 pt-2 text-[11px] text-gray-600">
+              <p className="mb-1 font-semibold text-amber-800">Why you&apos;ll like this</p>
+              {recommendationReasons.map((reason) => <p key={reason}>✓ {reason}</p>)}
+            </div>
+          )}
         </CardContent>
       </div>
 
@@ -137,6 +146,23 @@ export default function RecipeCard({ recipe, showActions = true }: RecipeCardPro
             <Bookmark className={`h-3.5 w-3.5 mr-1.5 ${isSaved ? "fill-amber-600 text-amber-600" : ""}`} />
             <span>{isSaved ? "Saved" : "Save"}</span>
           </Button>
+
+          {user?.collections && user.collections.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Add to collection">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {user.collections.map((collection) => (
+                  <DropdownMenuItem key={collection.id} onClick={() => toggleRecipeInCollection(collection.id, recipe.id)}>
+                    {collection.recipeIds.includes(recipe.id) ? "Remove from" : "Add to"} {collection.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </CardFooter>
       )}
     </Card>

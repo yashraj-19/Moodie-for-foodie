@@ -1,8 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getRecipeById } from "@/lib/api"
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
-  const id = Number.parseInt(params.id)
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: rawId } = await params
+  const id = Number.parseInt(rawId)
 
   if (isNaN(id)) {
     return NextResponse.json({ error: "Invalid recipe ID" }, { status: 400 })

@@ -5,6 +5,28 @@ export type { Recipe, SearchResult, SearchResponse } from "./types"
 
 const API_KEY = process.env.SPOONACULAR_API_KEY ?? ""
 const BASE_URL = "https://api.spoonacular.com"
+const CACHE_TTL_MS = 60_000
+const responseCache = new Map<string, { expiresAt: number; value: unknown }>()
+const pendingRequests = new Map<string, Promise<unknown>>()
+
+async function withCache<T>(key: string, loader: () => Promise<T>): Promise<T> {
+  const cached = responseCache.get(key)
+  if (cached && cached.expiresAt > Date.now()) return cached.value as T
+
+  const pending = pendingRequests.get(key)
+  if (pending) return pending as Promise<T>
+
+  const request = loader().then((value) => {
+    responseCache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, value })
+    pendingRequests.delete(key)
+    return value
+  }).catch((error) => {
+    pendingRequests.delete(key)
+    throw error
+  })
+  pendingRequests.set(key, request)
+  return request
+}
 
 export async function searchRecipes({
   query = "",
@@ -29,6 +51,8 @@ export async function searchRecipes({
   offset?: number
   number?: number
 }): Promise<SearchResponse> {
+  const cacheKey = `search:${JSON.stringify({ query, cuisine, diet, type, intolerances, maxReadyTime, sort, sortDirection, offset, number })}`
+  return withCache(cacheKey, async () => {
   const normalizedSort = sort === "trending" ? "popularity" : sort === "random" ? "popularity" : sort
 
   if (!API_KEY) {
@@ -89,9 +113,11 @@ export async function searchRecipes({
       offset,
     })
   }
+  })
 }
 
 export async function getRecipeById(id: number): Promise<Recipe | null> {
+  return withCache(`detail:${id}`, async () => {
   if (!API_KEY) {
     return getMockRecipeById(id)
   }
@@ -110,6 +136,7 @@ export async function getRecipeById(id: number): Promise<Recipe | null> {
     console.error(`Error fetching recipe ${id} from Spoonacular, returning fallback:`, error)
     return getMockRecipeById(id)
   }
+  })
 }
 
 export async function getRandomRecipes({
@@ -119,6 +146,7 @@ export async function getRandomRecipes({
   tags?: string
   number?: number
 }): Promise<Recipe[]> {
+  return withCache(`random:${JSON.stringify({ tags, number })}`, async () => {
   if (!API_KEY) {
     let list = [...MOCK_RECIPES]
     if (tags) {
@@ -156,6 +184,7 @@ export async function getRandomRecipes({
     console.error("Error fetching random recipes from Spoonacular, returning fallback:", error)
     return MOCK_RECIPES.slice(0, number)
   }
+  })
 }
 
 export async function getMealPlanForDay(diet?: string, exclude?: string): Promise<any> {
@@ -200,30 +229,33 @@ export async function getMealPlanForDay(diet?: string, exclude?: string): Promis
   }
 }
 
-export const moodToSearchParams: Record<string, { type: string; tags: string; diet?: string }> = {
+export const moodToSearchParams: Record<string, { query?: string; type: string; diet?: string; maxReadyTime?: number; sort?: string }> = {
   quick: {
     type: "main course",
-    tags: "easy,quick",
+    query: "quick",
+    maxReadyTime: 30,
   },
   healthy: {
     type: "main course",
-    tags: "healthy",
+    query: "healthy",
     diet: "vegetarian",
+    maxReadyTime: 45,
   },
   comfort: {
     type: "main course",
-    tags: "comfort",
+    query: "comfort food",
   },
   sweet: {
     type: "dessert",
-    tags: "sweet",
+    query: "sweet",
+    sort: "popularity",
   },
   spicy: {
     type: "main course",
-    tags: "spicy",
+    query: "spicy",
   },
   budget: {
     type: "main course",
-    tags: "cheap,budget",
+    query: "cheap",
   },
 }

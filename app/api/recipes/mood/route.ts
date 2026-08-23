@@ -9,13 +9,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid or missing mood parameter" }, { status: 400 })
   }
 
-  const { type, tags, diet } = moodToSearchParams[mood]
+  const { type, query, diet, maxReadyTime, sort } = moodToSearchParams[mood]
+  const profileDiet = searchParams.get("diet") || diet
 
   try {
     const results = await searchRecipes({
       type,
-      diet,
-      query: tags.split(",")[0], // Use the first tag as a query term
+      diet: profileDiet,
+      query,
+      maxReadyTime,
+      sort,
       number: 6,
     })
 

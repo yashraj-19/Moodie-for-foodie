@@ -16,10 +16,12 @@ import DashboardHeader from "@/components/dashboard-header"
 import RecipeCard from "@/components/recipe-card"
 import type { SearchResult } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
+import { hydrateRecipes } from "@/lib/recipe-client"
 
 export default function RecipesPage() {
   const { user } = useAuth()
   const [searchQuery, setSearchQuery] = useState("")
+  const [submittedQuery, setSubmittedQuery] = useState("")
   const [activeFilters, setActiveFilters] = useState<string[]>([])
   const [recipes, setRecipes] = useState<SearchResult[]>([])
   const [allFetchedRecipes, setAllFetchedRecipes] = useState<SearchResult[]>([])
@@ -37,10 +39,19 @@ export default function RecipesPage() {
   const [mealTypeFilters, setMealTypeFilters] = useState<string[]>([])
   const [maxTime, setMaxTime] = useState<number>(120)
   const [difficultyFilters, setDifficultyFilters] = useState<string[]>([])
+  const [hydratedSavedRecipes, setHydratedSavedRecipes] = useState<SearchResult[]>([])
 
   useEffect(() => {
     fetchRecipes()
-  }, [currentPage, sortOption, cuisineFilters, dietFilters, mealTypeFilters, maxTime, difficultyFilters, activeTab])
+  }, [currentPage, sortOption, cuisineFilters, dietFilters, mealTypeFilters, maxTime, difficultyFilters, submittedQuery])
+
+  useEffect(() => {
+    let cancelled = false
+    hydrateRecipes(user?.savedRecipeIds || []).then((hydrated) => {
+      if (!cancelled) setHydratedSavedRecipes(hydrated)
+    })
+    return () => { cancelled = true }
+  }, [user?.savedRecipeIds])
 
   const fetchRecipes = async () => {
     setIsLoading(true)
@@ -53,8 +64,8 @@ export default function RecipesPage() {
         offset: ((currentPage - 1) * resultsPerPage).toString(),
       })
 
-      if (searchQuery.trim()) {
-        params.append("query", searchQuery.trim())
+      if (submittedQuery) {
+        params.append("query", submittedQuery)
       }
 
       if (cuisineFilters.length > 0) {
@@ -107,7 +118,7 @@ export default function RecipesPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     setCurrentPage(1)
-    fetchRecipes()
+    setSubmittedQuery(searchQuery.trim())
   }
 
   const addFilter = (filter: string, type: "cuisine" | "diet" | "mealType" | "difficulty") => {
@@ -149,6 +160,7 @@ export default function RecipesPage() {
     setDifficultyFilters([])
     setMaxTime(120)
     setSearchQuery("")
+    setSubmittedQuery("")
     setCurrentPage(1)
   }
 
@@ -165,14 +177,23 @@ export default function RecipesPage() {
   }
 
   const totalPages = Math.max(1, Math.ceil(totalResults / resultsPerPage))
+  const pageNumbers = totalPages <= 7
+    ? Array.from({ length: totalPages }, (_, index) => index + 1)
+    : Array.from(new Set([1, 2, 3, currentPage - 1, currentPage, currentPage + 1, totalPages - 1, totalPages])).filter((page) => page > 0 && page <= totalPages).sort((a, b) => a - b)
 
   // Saved recipes from loaded list matching user saved ids
-  const savedRecipesList = allFetchedRecipes.filter((r) => user?.savedRecipeIds?.includes(r.id))
+  const savedRecipesList = hydratedSavedRecipes.filter((r) => user?.savedRecipeIds?.includes(r.id))
 
   // For You recipes prioritizing user's preferences
-  const personalizedRecipes = recipes.filter((r) => {
-    if (!user?.dietaryRestrictions?.length && !user?.favoriteCuisines?.length) return true
-    return true
+  const personalizedRecipes = [...recipes].sort((a, b) => {
+    const score = (recipe: SearchResult) => {
+      const text = `${recipe.title} ${recipe.image}`.toLowerCase()
+      const cuisineMatch = user?.favoriteCuisines?.some((cuisine) => text.includes(cuisine.toLowerCase())) ? 2 : 0
+      const savedMatch = user?.savedRecipeIds?.includes(recipe.id) ? 1 : 0
+      const likedMatch = user?.likedRecipeIds?.includes(recipe.id) ? 1 : 0
+      return cuisineMatch + savedMatch + likedMatch
+    }
+    return score(b) - score(a)
   })
 
   const displayRecipes =
@@ -419,15 +440,20 @@ export default function RecipesPage() {
                   >
                     Previous
                   </Button>
-                  {Array.from({ length: totalPages }).map((_, i) => (
+                  {pageNumbers.map((page, index) => (
+                    index > 0 && page - pageNumbers[index - 1] > 1 ? (
+                      <span key={`gap-${page}`} className="px-1 text-xs text-gray-400">...</span>
+                    ) : null
+                  )).filter(Boolean)}
+                  {pageNumbers.map((page) => (
                     <Button
-                      key={i}
-                      variant={currentPage === i + 1 ? "default" : "outline"}
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setCurrentPage(i + 1)}
-                      className={`w-8 h-8 p-0 text-xs ${currentPage === i + 1 ? "bg-amber-600 hover:bg-amber-700 text-white" : ""}`}
+                      onClick={() => setCurrentPage(page)}
+                      className={`w-8 h-8 p-0 text-xs ${currentPage === page ? "bg-amber-600 hover:bg-amber-700 text-white" : ""}`}
                     >
-                      {i + 1}
+                      {page}
                     </Button>
                   ))}
                   <Button

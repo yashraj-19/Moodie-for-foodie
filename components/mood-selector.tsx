@@ -18,9 +18,11 @@ const moods = [
 interface MoodSelectorProps {
   onMoodSelect: (recipes: SearchResult[]) => void
   onLoading: (isLoading: boolean) => void
+  onMoodChosen?: (mood: string) => void
+  diet?: string
 }
 
-export default function MoodSelector({ onMoodSelect, onLoading }: MoodSelectorProps) {
+export default function MoodSelector({ onMoodSelect, onLoading, onMoodChosen, diet }: MoodSelectorProps) {
   const [selectedMood, setSelectedMood] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -33,9 +35,12 @@ export default function MoodSelector({ onMoodSelect, onLoading }: MoodSelectorPr
 
     setIsLoading(true)
     onLoading(true)
+    onMoodChosen?.(selectedMood)
 
     try {
-      const response = await fetch(`/api/recipes/mood?mood=${selectedMood}`)
+      const params = new URLSearchParams({ mood: selectedMood })
+      if (diet) params.set("diet", diet)
+      const response = await fetch(`/api/recipes/mood?${params.toString()}`)
 
       if (!response.ok) {
         throw new Error(`API request failed with status ${response.status}`)

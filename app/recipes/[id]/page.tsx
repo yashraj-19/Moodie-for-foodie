@@ -34,6 +34,8 @@ import type { Recipe } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
 import { toast } from "sonner"
 
+type RecipeStep = { number?: number; step: string }
+
 export default function RecipeDetail() {
   const params = useParams()
   const router = useRouter()
@@ -137,7 +139,7 @@ export default function RecipeDetail() {
     )
   }
 
-  const stepsList =
+  const stepsList: RecipeStep[] =
     recipe.analyzedInstructions?.[0]?.steps ||
     recipe.instructions
       ?.split("\n")
