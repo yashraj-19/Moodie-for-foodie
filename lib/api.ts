@@ -1,74 +1,10 @@
-// Spoonacular key is read server-side from the environment. These modules are
-// only imported by Next.js route handlers (never shipped to the browser), so
-// the key is never exposed to the client. Set SPOONACULAR_API_KEY in .env.local.
-const API_KEY = process.env.SPOONACULAR_API_KEY ?? "";
-const BASE_URL = "https://api.spoonacular.com";
+import { getMockSearchResponse, getMockRecipeById, MOCK_RECIPES } from "./mock-recipes"
+import type { Recipe, SearchResult, SearchResponse } from "./types"
 
-if (!API_KEY && process.env.NODE_ENV !== "production") {
-  // Surface the misconfiguration early in development instead of failing with
-  // an opaque 401 from Spoonacular at request time.
-  console.warn("[api] SPOONACULAR_API_KEY is not set — recipe requests will fail. Add it to .env.local");
-}
+export type { Recipe, SearchResult, SearchResponse } from "./types"
 
-
-export type Recipe = {
-  id: number
-  title: string
-  image: string
-  imageType: string
-  readyInMinutes: number
-  servings: number
-  sourceUrl: string
-  summary: string
-  cuisines: string[]
-  dishTypes: string[]
-  diets: string[]
-  instructions: string
-  analyzedInstructions: any[]
-  vegetarian: boolean
-  vegan: boolean
-  glutenFree: boolean
-  dairyFree: boolean
-  veryHealthy: boolean
-  cheap: boolean
-  veryPopular: boolean
-  sustainable: boolean
-  lowFodmap: boolean
-  weightWatcherSmartPoints: number
-  gaps: string
-  preparationMinutes: number
-  cookingMinutes: number
-  aggregateLikes: number
-  healthScore: number
-  creditsText: string
-  sourceName: string
-  pricePerServing: number
-  extendedIngredients: any[]
-  spoonacularScore?: number
-}
-
-export type SearchResult = {
-  id: number
-  title: string
-  image: string
-  imageType: string
-  readyInMinutes?: number
-  servings?: number
-  nutrition?: {
-    nutrients: {
-      name: string
-      amount: number
-      unit: string
-    }[]
-  }
-}
-
-export type SearchResponse = {
-  results: SearchResult[]
-  offset: number
-  number: number
-  totalResults: number
-}
+const API_KEY = process.env.SPOONACULAR_API_KEY ?? ""
+const BASE_URL = "https://api.spoonacular.com"
 
 export async function searchRecipes({
   query = "",
@@ -93,16 +29,29 @@ export async function searchRecipes({
   offset?: number
   number?: number
 }): Promise<SearchResponse> {
+  const normalizedSort = sort === "trending" ? "popularity" : sort === "random" ? "popularity" : sort
+
+  if (!API_KEY) {
+    return getMockSearchResponse({
+      query,
+      cuisine,
+      diet,
+      type,
+      maxReadyTime,
+      number,
+      offset,
+    })
+  }
+
   const params = new URLSearchParams({
-    apiKey: API_KEY as string,
+    apiKey: API_KEY,
     number: number.toString(),
     offset: offset.toString(),
     addRecipeInformation: "true",
-    sort,
+    sort: normalizedSort,
     sortDirection,
   })
 
-  // Only add query if it's not empty
   if (query) params.append("query", query)
   if (cuisine) params.append("cuisine", cuisine)
   if (diet) params.append("diet", diet)
@@ -114,31 +63,52 @@ export async function searchRecipes({
     const response = await fetch(`${BASE_URL}/recipes/complexSearch?${params.toString()}`)
 
     if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`API request failed with status ${response.status}: ${errorText}`)
+      console.warn(`[api] Spoonacular responded with ${response.status}. Using fallback dataset.`)
+      return getMockSearchResponse({
+        query,
+        cuisine,
+        diet,
+        type,
+        maxReadyTime,
+        number,
+        offset,
+      })
     }
 
     const data = await response.json()
     return data
   } catch (error) {
-    console.error("Error searching recipes:", error)
-    throw error // Re-throw to allow handling in the API route
+    console.error("Error searching recipes from Spoonacular, returning fallback:", error)
+    return getMockSearchResponse({
+      query,
+      cuisine,
+      diet,
+      type,
+      maxReadyTime,
+      number,
+      offset,
+    })
   }
 }
 
 export async function getRecipeById(id: number): Promise<Recipe | null> {
+  if (!API_KEY) {
+    return getMockRecipeById(id)
+  }
+
   try {
     const response = await fetch(`${BASE_URL}/recipes/${id}/information?apiKey=${API_KEY}&includeNutrition=true`)
 
     if (!response.ok) {
-      throw new Error(`API request failed with status ${response.status}`)
+      console.warn(`[api] Spoonacular getRecipeById(${id}) returned ${response.status}. Using fallback.`)
+      return getMockRecipeById(id)
     }
 
     const data = await response.json()
     return data
   } catch (error) {
-    console.error(`Error fetching recipe ${id}:`, error)
-    return null
+    console.error(`Error fetching recipe ${id} from Spoonacular, returning fallback:`, error)
+    return getMockRecipeById(id)
   }
 }
 
@@ -149,9 +119,25 @@ export async function getRandomRecipes({
   tags?: string
   number?: number
 }): Promise<Recipe[]> {
+  if (!API_KEY) {
+    let list = [...MOCK_RECIPES]
+    if (tags) {
+      const tagList = tags.toLowerCase().split(",").map((t) => t.trim())
+      const filtered = list.filter((r) =>
+        tagList.some((t) =>
+          r.diets.some((d) => d.toLowerCase().includes(t)) ||
+          r.dishTypes.some((dt) => dt.toLowerCase().includes(t)) ||
+          r.cuisines.some((c) => c.toLowerCase().includes(t))
+        )
+      )
+      if (filtered.length > 0) list = filtered
+    }
+    return list.slice(0, number)
+  }
+
   try {
     const params = new URLSearchParams({
-      apiKey: API_KEY as string,
+      apiKey: API_KEY,
       number: number.toString(),
     })
 
@@ -160,21 +146,40 @@ export async function getRandomRecipes({
     const response = await fetch(`${BASE_URL}/recipes/random?${params.toString()}`)
 
     if (!response.ok) {
-      throw new Error(`API request failed with status ${response.status}`)
+      console.warn(`[api] Spoonacular getRandomRecipes returned ${response.status}. Using fallback.`)
+      return MOCK_RECIPES.slice(0, number)
     }
 
     const data = await response.json()
-    return data.recipes
+    return data.recipes || MOCK_RECIPES.slice(0, number)
   } catch (error) {
-    console.error("Error fetching random recipes:", error)
-    return []
+    console.error("Error fetching random recipes from Spoonacular, returning fallback:", error)
+    return MOCK_RECIPES.slice(0, number)
   }
 }
 
 export async function getMealPlanForDay(diet?: string, exclude?: string): Promise<any> {
+  if (!API_KEY) {
+    return {
+      meals: MOCK_RECIPES.slice(0, 3).map((r) => ({
+        id: r.id,
+        title: r.title,
+        readyInMinutes: r.readyInMinutes,
+        servings: r.servings,
+        sourceUrl: r.sourceUrl,
+      })),
+      nutrients: {
+        calories: 1850,
+        carbohydrates: 210,
+        fat: 65,
+        protein: 95,
+      },
+    }
+  }
+
   try {
     const params = new URLSearchParams({
-      apiKey: API_KEY as string,
+      apiKey: API_KEY,
       timeFrame: "day",
     })
 
@@ -222,4 +227,3 @@ export const moodToSearchParams: Record<string, { type: string; tags: string; di
     tags: "cheap,budget",
   },
 }
-

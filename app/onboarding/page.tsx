@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -9,18 +10,100 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ChevronLeft, ChevronRight, Check } from "lucide-react"
+import { ChevronLeft, ChevronRight, Check, UtensilsCrossed } from "lucide-react"
+import { useAuth } from "@/context/auth-context"
+import { toast } from "sonner"
+
+const DIET_OPTIONS = [
+  "Vegetarian",
+  "Vegan",
+  "Gluten-Free",
+  "Dairy-Free",
+  "Keto",
+  "Paleo",
+  "Low-Carb",
+  "Nut-Free",
+]
+
+const CUISINE_OPTIONS = [
+  "Italian",
+  "Mexican",
+  "Chinese",
+  "Japanese",
+  "Indian",
+  "Thai",
+  "Mediterranean",
+  "French",
+  "American",
+  "Middle Eastern",
+  "Korean",
+  "Vietnamese",
+]
 
 export default function Onboarding() {
   const router = useRouter()
+  const { signup } = useAuth()
   const [step, setStep] = useState(1)
   const totalSteps = 4
 
-  const nextStep = () => {
+  // Form State
+  const [name, setName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [selectedDiets, setSelectedDiets] = useState<string[]>([])
+  const [allergies, setAllergies] = useState("")
+  const [cookingSkill, setCookingSkill] = useState("Intermediate")
+  const [cookingTime, setCookingTime] = useState("30-60")
+  const [selectedCuisines, setSelectedCuisines] = useState<string[]>(["Italian", "Mediterranean"])
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleDietToggle = (diet: string) => {
+    setSelectedDiets((prev) =>
+      prev.includes(diet) ? prev.filter((d) => d !== diet) : [...prev, diet]
+    )
+  }
+
+  const handleCuisineToggle = (cuisine: string) => {
+    setSelectedCuisines((prev) =>
+      prev.includes(cuisine) ? prev.filter((c) => c !== cuisine) : [...prev, cuisine]
+    )
+  }
+
+  const nextStep = async () => {
+    if (step === 1) {
+      if (!name.trim()) {
+        toast.error("Please enter your name")
+        return
+      }
+      if (!email.trim() || !email.includes("@")) {
+        toast.error("Please enter a valid email address")
+        return
+      }
+    }
+
     if (step < totalSteps) {
       setStep(step + 1)
     } else {
-      router.push("/dashboard")
+      // Final submission
+      setIsSubmitting(true)
+      const res = await signup({
+        name: name.trim() || "Foodie Explorer",
+        email: email.trim() || "user@example.com",
+        password,
+        dietaryRestrictions: selectedDiets,
+        allergies: allergies.trim() || "None",
+        cookingSkill,
+        cookingTime,
+        favoriteCuisines: selectedCuisines.length > 0 ? selectedCuisines : ["Italian", "Asian"],
+      })
+      setIsSubmitting(false)
+
+      if (res.success) {
+        toast.success(`Welcome to Moodie for Foodie, ${name || "friend"}!`)
+        router.push("/dashboard")
+      } else {
+        toast.error(res.error || "Failed to complete setup")
+      }
     }
   }
 
@@ -32,43 +115,73 @@ export default function Onboarding() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-white flex flex-col items-center justify-center p-4">
-      <Card className="w-full max-w-3xl shadow-lg">
-        <CardContent className="p-6">
+      <div className="mb-6 text-center">
+        <Link href="/" className="inline-flex items-center space-x-2">
+          <div className="w-9 h-9 rounded-full bg-amber-600 flex items-center justify-center text-white shadow-sm">
+            <UtensilsCrossed className="h-5 w-5" />
+          </div>
+          <span className="font-bold text-xl text-amber-600">Moodie for Foodie</span>
+        </Link>
+      </div>
+
+      <Card className="w-full max-w-2xl shadow-xl border-amber-100">
+        <CardContent className="p-6 sm:p-8">
           <div className="mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <h1 className="text-2xl font-bold text-amber-600">
-                {step === 1 && "Welcome to Culinary Canvas"}
+            <div className="flex justify-between items-center mb-3">
+              <h1 className="text-2xl font-bold text-gray-800">
+                {step === 1 && "Create Your Food Profile"}
                 {step === 2 && "Dietary Preferences"}
                 {step === 3 && "Cooking Experience"}
                 {step === 4 && "Favorite Cuisines"}
               </h1>
-              <div className="text-sm text-gray-500">
+              <span className="text-xs font-semibold px-2.5 py-1 bg-amber-100 text-amber-800 rounded-full">
                 Step {step} of {totalSteps}
-              </div>
+              </span>
             </div>
-            <div className="w-full bg-gray-200 h-2 rounded-full">
+            <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
               <div
-                className="bg-amber-600 h-2 rounded-full transition-all duration-300"
+                className="bg-amber-600 h-full rounded-full transition-all duration-300 ease-out"
                 style={{ width: `${(step / totalSteps) * 100}%` }}
-              ></div>
+              />
             </div>
           </div>
 
           {step === 1 && (
             <div className="space-y-6">
-              <p className="text-gray-600">Let's get to know you better so we can personalize your experience.</p>
+              <p className="text-gray-600 text-sm">
+                Let's get to know you so we can personalize recipes to your tastes and dietary goals.
+              </p>
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Your Name</Label>
-                  <Input id="name" placeholder="Enter your name" />
+                  <Input
+                    id="name"
+                    placeholder="e.g. Alex Lee"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email Address</Label>
-                  <Input id="email" type="email" placeholder="Enter your email" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="e.g. alex@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">Create Password</Label>
-                  <Input id="password" type="password" placeholder="Create a password" />
+                  <Label htmlFor="password">Create Password (Optional)</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
                 </div>
               </div>
             </div>
@@ -76,28 +189,44 @@ export default function Onboarding() {
 
           {step === 2 && (
             <div className="space-y-6">
-              <p className="text-gray-600">
-                Tell us about your dietary preferences so we can recommend suitable recipes.
+              <p className="text-gray-600 text-sm">
+                Select your dietary restrictions so recipes fit your health and lifestyle preferences.
               </p>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Do you have any dietary restrictions?</Label>
-                  <div className="grid grid-cols-2 gap-4">
-                    {["Vegetarian", "Vegan", "Gluten-Free", "Dairy-Free", "Keto", "Paleo", "Low-Carb", "Nut-Free"].map(
-                      (diet) => (
-                        <div key={diet} className="flex items-center space-x-2">
-                          <Checkbox id={diet.toLowerCase()} />
-                          <Label htmlFor={diet.toLowerCase()} className="text-sm font-normal">
-                            {diet}
-                          </Label>
+                  <Label className="text-sm font-semibold">Do you follow any diets?</Label>
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    {DIET_OPTIONS.map((diet) => {
+                      const isChecked = selectedDiets.includes(diet)
+                      return (
+                        <div
+                          key={diet}
+                          onClick={() => handleDietToggle(diet)}
+                          className={`flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                            isChecked
+                              ? "border-amber-500 bg-amber-50 text-amber-900 font-medium"
+                              : "border-gray-200 hover:bg-gray-50 text-gray-700"
+                          }`}
+                        >
+                          <Checkbox
+                            id={diet.toLowerCase()}
+                            checked={isChecked}
+                            onCheckedChange={() => handleDietToggle(diet)}
+                          />
+                          <span className="text-sm select-none">{diet}</span>
                         </div>
-                      ),
-                    )}
+                      )
+                    })}
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Any allergies or ingredients to avoid?</Label>
-                  <Input placeholder="E.g., shellfish, peanuts, etc." />
+                <div className="space-y-2 pt-2">
+                  <Label htmlFor="allergies">Any allergies or ingredients to avoid?</Label>
+                  <Input
+                    id="allergies"
+                    placeholder="e.g., Shellfish, peanuts, cilantro, dairy"
+                    value={allergies}
+                    onChange={(e) => setAllergies(e.target.value)}
+                  />
                 </div>
               </div>
             </div>
@@ -105,34 +234,41 @@ export default function Onboarding() {
 
           {step === 3 && (
             <div className="space-y-6">
-              <p className="text-gray-600">
-                Let us know about your cooking experience so we can suggest appropriate recipes.
+              <p className="text-gray-600 text-sm">
+                Tell us about your comfort level in the kitchen so we recommend the right complexity.
               </p>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>How would you describe your cooking skills?</Label>
-                  <RadioGroup defaultValue="intermediate">
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="beginner" id="beginner" />
-                      <Label htmlFor="beginner">Beginner - I'm just starting out</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="intermediate" id="intermediate" />
-                      <Label htmlFor="intermediate">Intermediate - I can follow most recipes</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="advanced" id="advanced" />
-                      <Label htmlFor="advanced">Advanced - I'm comfortable with complex techniques</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="professional" id="professional" />
-                      <Label htmlFor="professional">Professional - I have professional training</Label>
-                    </div>
+              <div className="space-y-5">
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold">Cooking Skill Level</Label>
+                  <RadioGroup value={cookingSkill} onValueChange={setCookingSkill} className="space-y-2">
+                    {[
+                      { id: "Beginner", desc: "Just starting out with simple, quick recipes" },
+                      { id: "Intermediate", desc: "Comfortable following most recipes & techniques" },
+                      { id: "Advanced", desc: "Love complex techniques & gourmet cooking" },
+                    ].map((item) => (
+                      <div
+                        key={item.id}
+                        onClick={() => setCookingSkill(item.id)}
+                        className={`flex items-center space-x-3 p-3.5 rounded-lg border cursor-pointer transition-colors ${
+                          cookingSkill === item.id
+                            ? "border-amber-500 bg-amber-50"
+                            : "border-gray-200 hover:bg-gray-50"
+                        }`}
+                      >
+                        <RadioGroupItem value={item.id} id={item.id.toLowerCase()} />
+                        <div>
+                          <Label htmlFor={item.id.toLowerCase()} className="font-semibold text-gray-900 cursor-pointer">
+                            {item.id}
+                          </Label>
+                          <p className="text-xs text-gray-500">{item.desc}</p>
+                        </div>
+                      </div>
+                    ))}
                   </RadioGroup>
                 </div>
-                <div className="space-y-2">
-                  <Label>How much time do you typically spend cooking a meal?</Label>
-                  <Tabs defaultValue="30-60">
+                <div className="space-y-2 pt-2">
+                  <Label className="text-sm font-semibold">Typical time available for cooking</Label>
+                  <Tabs value={cookingTime} onValueChange={setCookingTime}>
                     <TabsList className="grid grid-cols-4 w-full">
                       <TabsTrigger value="15-30">15-30 min</TabsTrigger>
                       <TabsTrigger value="30-60">30-60 min</TabsTrigger>
@@ -147,53 +283,62 @@ export default function Onboarding() {
 
           {step === 4 && (
             <div className="space-y-6">
-              <p className="text-gray-600">Select your favorite cuisines to help us recommend recipes you'll love.</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                {[
-                  "Italian",
-                  "Mexican",
-                  "Chinese",
-                  "Japanese",
-                  "Indian",
-                  "Thai",
-                  "Mediterranean",
-                  "French",
-                  "American",
-                  "Middle Eastern",
-                  "Korean",
-                  "Vietnamese",
-                ].map((cuisine) => (
-                  <div
-                    key={cuisine}
-                    className="border rounded-lg p-3 cursor-pointer hover:bg-amber-50 hover:border-amber-300 transition-colors group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span>{cuisine}</span>
-                      <div className="w-5 h-5 rounded-full border border-gray-300 group-hover:border-amber-500 flex items-center justify-center">
-                        <Check className="w-3 h-3 text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <p className="text-gray-600 text-sm">
+                Select your favorite cuisines (choose at least 1) to curate your personalized discovery feed.
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {CUISINE_OPTIONS.map((cuisine) => {
+                  const isSelected = selectedCuisines.includes(cuisine)
+                  return (
+                    <div
+                      key={cuisine}
+                      onClick={() => handleCuisineToggle(cuisine)}
+                      className={`border rounded-lg p-3.5 cursor-pointer transition-all ${
+                        isSelected
+                          ? "border-amber-500 bg-amber-50 text-amber-900 font-semibold shadow-xs"
+                          : "border-gray-200 hover:bg-gray-50 text-gray-700"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">{cuisine}</span>
+                        <div
+                          className={`w-5 h-5 rounded-full flex items-center justify-center transition-colors ${
+                            isSelected ? "bg-amber-600 text-white" : "border border-gray-300"
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
 
-          <div className="flex justify-between mt-8">
+          <div className="flex justify-between items-center mt-8 pt-4 border-t border-gray-100">
             <Button
+              type="button"
               variant="outline"
               onClick={prevStep}
               disabled={step === 1}
               className={step === 1 ? "invisible" : ""}
             >
-              <ChevronLeft className="mr-2 h-4 w-4" />
+              <ChevronLeft className="mr-1.5 h-4 w-4" />
               Back
             </Button>
-            <Button onClick={nextStep} className="bg-amber-600 hover:bg-amber-700">
-              {step < totalSteps ? (
+            <Button
+              type="button"
+              onClick={nextStep}
+              disabled={isSubmitting}
+              className="bg-amber-600 hover:bg-amber-700 text-white min-w-[130px]"
+            >
+              {isSubmitting ? (
+                "Setting Up..."
+              ) : step < totalSteps ? (
                 <>
                   Next
-                  <ChevronRight className="ml-2 h-4 w-4" />
+                  <ChevronRight className="ml-1.5 h-4 w-4" />
                 </>
               ) : (
                 "Complete Setup"
@@ -205,4 +350,3 @@ export default function Onboarding() {
     </div>
   )
 }
-

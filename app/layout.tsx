@@ -1,14 +1,13 @@
 import type React from "react"
 import { Inter } from "next/font/google"
-import { ThemeProvider } from "@/components/theme-provider"
+import { Providers } from "@/components/providers"
 import "./globals.css"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata = {
-  title: "Culinary Canvas | Personalized Recipe Discovery",
-  description: "Discover recipes tailored to your preferences and dietary needs",
-    generator: 'V'
+  title: "Moodie for Foodie | Culinary Canvas Recipe Discovery",
+  description: "Personalized recipe discovery tailored to your mood, taste, and dietary preferences.",
 }
 
 export default function RootLayout({
@@ -19,14 +18,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
-          {children}
-        </ThemeProvider>
+        <Providers>{children}</Providers>
       </body>
     </html>
   )
 }
-
-
-
-import './globals.css'
